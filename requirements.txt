@@ -1,0 +1,10 @@
+
+streamlit
+pandas
+yfinance
+matplotlib
+plotly
+fpdf
+yagmail
+requests
+datetime
