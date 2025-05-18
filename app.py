@@ -27,15 +27,14 @@ withdrawal = st.number_input("Withdraw this Dollar Amount Monthly ($)", min_valu
 dca = st.number_input("Add Capital Monthly (DCA) ($)", min_value=0.0, value=0.0)
 current_price = st.number_input("Current MSTY Price ($)", value=45.0)
 months = st.slider("Holding Period (Months)", 1, 360, 60)
+view_mode = st.selectbox("How would you like to view the table?", ["Monthly", "Yearly", "Total"])
 run_sim = st.button("Run Simulation")
 
 if run_sim:
     shares = initial_shares
     state_penalty_rate = state_penalties[selected_state]
-    fed_penalty_rate = 0.03 / 12
     start_date = datetime.today().replace(day=1)
 
-    tax_records = {}
     rows = []
 
     for i in range(months):
@@ -46,17 +45,9 @@ if run_sim:
 
         monthly_tax = 0
         tax_paid = 0
-        penalty = 0
-
-        if account_type == "Taxable":
+        if account_type == "Taxable" and not defer_taxes:
             monthly_tax = div_income * (fed_tax_rate + state_tax_rate) / 100
-            if defer_taxes:
-                if year not in tax_records:
-                    tax_records[year] = {"owed": 0.0, "paid": 0.0}
-                tax_records[year]["owed"] += monthly_tax
-                tax_paid = 0  # will be handled annually
-            else:
-                tax_paid = monthly_tax
+            tax_paid = monthly_tax
 
         reinvest_amount = max(0, gross_cash - withdrawal - tax_paid)
         new_shares = reinvest_amount / avg_reinvest_cost if avg_reinvest_cost else 0
@@ -64,6 +55,8 @@ if run_sim:
         portfolio_value = shares * current_price
 
         rows.append({
+            "Month": i + 1,
+            "Year": year,
             "Date": date.strftime("%Y-%m-%d"),
             "Dividends": round(div_income, 2),
             "Taxes Withdrawn": round(tax_paid, 2),
@@ -76,6 +69,33 @@ if run_sim:
         })
 
     df = pd.DataFrame(rows)
-    st.dataframe(df)
+
+    if view_mode == "Monthly":
+        view_df = df.copy()
+    elif view_mode == "Yearly":
+        view_df = df.groupby("Year").agg({
+            "Dividends": "sum",
+            "Taxes Withdrawn": "sum",
+            "Withdrawn": "sum",
+            "DCA": "sum",
+            "Reinvested": "sum",
+            "New Shares": "sum",
+            "Total Shares": "last",
+            "Portfolio Value": "last"
+        }).reset_index()
+    else:  # Total
+        view_df = pd.DataFrame([{
+            "Dividends": df["Dividends"].sum(),
+            "Taxes Withdrawn": df["Taxes Withdrawn"].sum(),
+            "Withdrawn": df["Withdrawn"].sum(),
+            "DCA": df["DCA"].sum(),
+            "Reinvested": df["Reinvested"].sum(),
+            "New Shares": df["New Shares"].sum(),
+            "Total Shares": df["Total Shares"].iloc[-1],
+            "Portfolio Value": df["Portfolio Value"].iloc[-1]
+        }])
+
+    st.subheader("Simulation Results")
+    st.dataframe(view_df)
     st.success(f"Total Final Shares: {shares:,.2f}")
     st.success(f"Final Portfolio Value: ${shares * current_price:,.2f}")
